@@ -44,8 +44,6 @@ jobs:
           python -m python_minifier \
             --output /tmp/chartgen_min \
             --rename-globals \
-            --remove-annotations \
-            --remove-pass \
             --remove-literal-statements \
             chartgen_cli/
 
