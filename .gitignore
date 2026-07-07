@@ -1,0 +1,33 @@
+# Python 构建产物
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+
+# 虚拟环境
+.venv/
+venv/
+
+# 用户/项目级数据（不应随代码分发）
+chartgen_workspace/
+*.log
+
+# 本地敏感配置
+.env
+
+# PyInstaller
+*.spec
+
+# IDE
+.vscode/
+
+# 项目内临时目录
+chartgen_cli/workspace/
+
+# 无关目录
+Swiftagent/
+1.txt
+
+# OS
+.DS_Store
