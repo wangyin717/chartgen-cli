@@ -1,1 +1,0 @@
-"""chartgen_cli package."""
