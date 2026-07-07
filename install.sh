@@ -3,10 +3,15 @@
 # Usage: curl -fsSL https://raw.githubusercontent.com/wangyin717/chartgen-cli/main/install.sh | bash
 set -euo pipefail
 
-REPO="wangyin717/chartgen-cli"
 BIN_NAME="chartgen"
 BIN_DIR="$HOME/.local/bin"
 CONFIG_DIR="$HOME/.chartgen"
+
+# ── release download URLs（每次发版更新这里）────────────────────────────────────
+VERSION="v0.1.2"
+URL_DARWIN_ARM64="https://digit-force.coding.net/api/user/digit-force/project/biaopin-swiftagent/depot/chartgen-cli/git/releases/attachments/download/334534"
+URL_DARWIN_X86_64=""   # 待补充
+URL_LINUX_X86_64=""    # 待补充
 
 # ── colours ──────────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
@@ -22,32 +27,25 @@ ARCH="$(uname -m)"
 case "$OS" in
     Darwin)
         case "$ARCH" in
-            arm64)  ARTIFACT="chartgen-darwin-arm64" ;;
-            x86_64) ARTIFACT="chartgen-darwin-x86_64" ;;
+            arm64)  DOWNLOAD_URL="$URL_DARWIN_ARM64" ;;
+            x86_64) DOWNLOAD_URL="$URL_DARWIN_X86_64" ;;
             *)      die "Unsupported architecture: $ARCH" ;;
         esac
         ;;
     Linux)
         case "$ARCH" in
-            x86_64) ARTIFACT="chartgen-linux-x86_64" ;;
+            x86_64) DOWNLOAD_URL="$URL_LINUX_X86_64" ;;
             *)      die "Unsupported architecture: $ARCH (only x86_64 supported on Linux)" ;;
         esac
         ;;
     *) die "Unsupported OS: $OS. Supports macOS and Linux only." ;;
 esac
 
-step "Detected: $OS/$ARCH → $ARTIFACT"
-
-# ── get latest release version ────────────────────────────────────────────────
-step "Fetching latest release..."
-LATEST=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
-    | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')
-[ -z "$LATEST" ] && die "Could not fetch latest release. Check your internet connection."
-info "Latest version: $LATEST"
+[ -z "$DOWNLOAD_URL" ] && die "No binary available for $OS/$ARCH yet."
+step "Detected: $OS/$ARCH → $VERSION"
 
 # ── download binary ───────────────────────────────────────────────────────────
 mkdir -p "$BIN_DIR"
-DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${LATEST}/${ARTIFACT}"
 TEMP_BIN="$(mktemp)"
 
 step "Downloading $ARTIFACT..."
