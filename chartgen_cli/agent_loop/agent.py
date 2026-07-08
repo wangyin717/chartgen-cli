@@ -106,6 +106,7 @@ def react_loop(
     stream: bool = True,
     tool_filter: Optional[set[str]] = None,
     user_prefix: str = "",
+    cancel_event: Optional[threading.Event] = None,
 ) -> Generator[str, None, list[dict]]:
     """
     执行一轮 ReAct loop，以 generator 形式实时 yield 输出片段。
@@ -145,6 +146,9 @@ def react_loop(
         logger.info("[React Loop Agent] start loop: query=%r plan_mode=%s", user_query[:80], is_plan_mode)
 
         for step in range(1, MAX_STEPS + 1):
+            if cancel_event and cancel_event.is_set():
+                logger.info("[React Loop Agent] cancelled at step=%d", step)
+                break
             logger.debug("[React Loop Agent] step=%d", step)
 
             response = await llm_client.call(
@@ -244,15 +248,24 @@ def react_loop(
     t = threading.Thread(target=_thread_main, daemon=True)
     t.start()
 
+    _POLL = 0.05
     while True:
-        item = q.get()
+        try:
+            item = q.get(timeout=_POLL)
+        except queue.Empty:
+            if cancel_event and cancel_event.is_set():
+                break
+            continue
         if item is _SENTINEL:
             break
         yield item
+        if cancel_event and cancel_event.is_set():
+            break
 
-    t.join()
+    if not (cancel_event and cancel_event.is_set()):
+        t.join()
 
-    if exc_holder:
+    if exc_holder and not (cancel_event and cancel_event.is_set()):
         raise exc_holder[0]
 
     return new_history

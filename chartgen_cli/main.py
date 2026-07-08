@@ -247,6 +247,50 @@ class _Spinner:
         self.start()
 
 
+class _KeyboardListener:
+    """在 agent 执行期间监听 ESC 键，检测到后设置 cancel_event。仅在 TTY 环境下激活。"""
+
+    def __init__(self, cancel_event: threading.Event):
+        self._cancel_event = cancel_event
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._active = sys.stdin.isatty()
+
+    def start(self):
+        if self._active:
+            self._thread.start()
+
+    def stop(self):
+        self._stop.set()
+        if self._active and self._thread.is_alive():
+            self._thread.join(timeout=0.5)
+
+    def _run(self):
+        import tty
+        import termios
+        import select
+        fd = sys.stdin.fileno()
+        old_settings = None
+        try:
+            old_settings = termios.tcgetattr(fd)
+            tty.setcbreak(fd)
+            while not self._stop.is_set():
+                r, _, _ = select.select([fd], [], [], 0.05)
+                if r:
+                    ch = os.read(fd, 1)
+                    if ch == b'\x1b':
+                        self._cancel_event.set()
+                        break
+        except Exception:
+            pass
+        finally:
+            if old_settings is not None:
+                try:
+                    termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+                except Exception:
+                    pass
+
+
 def _cmd_resume(args: list[str]) -> None:
     """处理 `chartgen resume [id]`：无参数时打印列表，有参数时进入指定 session。"""
     if not args:
@@ -346,8 +390,10 @@ def _run_plan(session, history: list[dict], plan_query: str) -> None:
     is_first_round = True
 
     while True:
+        plan_history_snapshot = list(plan_history)
+        cancel_event = threading.Event()
+        listener = _KeyboardListener(cancel_event)
         spinner = _Spinner()
-        spinner.start()
         final_buf: list[str] = []
 
         if is_first_round:
@@ -361,6 +407,8 @@ def _run_plan(session, history: list[dict], plan_query: str) -> None:
             plan_history = h
             save_history(session, h)
 
+        spinner.start()
+        listener.start()
         try:
             gen = react_loop(
                 current_query,
@@ -368,10 +416,13 @@ def _run_plan(session, history: list[dict], plan_query: str) -> None:
                 session=session,
                 on_history_update=_on_plan_history_update,
                 user_prefix=current_prefix,
+                cancel_event=cancel_event,
             )
             while True:
                 try:
                     chunk = next(gen)
+                    if cancel_event.is_set():
+                        break
                     if chunk.startswith(TOOL_PREFIX):
                         spinner.print_line(chunk[len(TOOL_PREFIX):].rstrip("\n"))
                     elif chunk.startswith(THINK_PREFIX):
@@ -401,11 +452,19 @@ def _run_plan(session, history: list[dict], plan_query: str) -> None:
                     plan_text = "".join(final_buf)
                     break
         except Exception as e:
-            spinner.stop()
             print(f"\n[error] {e}")
             return
         finally:
+            listener.stop()
             spinner.stop()
+
+        if cancel_event.is_set():
+            sys.stdout.write(f"\r{' ' * 48}\r^C  Cancelled.\n")
+            sys.stdout.flush()
+            plan_history = plan_history_snapshot
+            save_history(session, plan_history_snapshot)
+            print()
+            return
 
         if final_buf:
             print()
@@ -432,9 +491,11 @@ def _run_plan(session, history: list[dict], plan_query: str) -> None:
 
 
 def _run_react(session, history: list[dict], user_input: str) -> list[dict]:
-    """单次 react loop 执行，渲染输出，返回更新后的 history。"""
+    """单次 react loop 执行，渲染输出，返回更新后的 history。取消时回滚并返回原始 history。"""
+    history_snapshot = list(history)
+    cancel_event = threading.Event()
+    listener = _KeyboardListener(cancel_event)
     spinner = _Spinner()
-    spinner.start()
     final_buf: list[str] = []
 
     def _render_result(tool_name: str, result: str) -> None:
@@ -445,17 +506,22 @@ def _run_react(session, history: list[dict], user_input: str) -> list[dict]:
             sys.stdout.write(f"{_GRAY}  ↳ ... ({len(lines) - 1} more lines){_R}\n")
         sys.stdout.flush()
 
+    spinner.start()
+    listener.start()
     try:
         gen = react_loop(
             user_input,
             history,
             session=session,
             on_history_update=lambda h: save_history(session, h),
+            cancel_event=cancel_event,
         )
         new_history = None
         while True:
             try:
                 chunk = next(gen)
+                if cancel_event.is_set():
+                    break
                 if chunk.startswith(TOOL_PREFIX):
                     spinner.print_line(chunk[len(TOOL_PREFIX):].rstrip("\n"))
                 elif chunk.startswith(THINK_PREFIX):
@@ -477,9 +543,17 @@ def _run_react(session, history: list[dict], user_input: str) -> list[dict]:
                     sys.stdout.write(chunk)
                     sys.stdout.flush()
             except StopIteration as e:
-                new_history = e.value
+                if not cancel_event.is_set():
+                    new_history = e.value
                 break
         spinner.stop()
+        if cancel_event.is_set():
+            sys.stdout.write(f"\r{' ' * 48}\r^C  Cancelled.\n")
+            sys.stdout.flush()
+            save_history(session, history_snapshot)
+            print()
+            print()
+            return history_snapshot
         if final_buf:
             print()
             _console.print(Markdown("".join(final_buf)))
@@ -489,6 +563,8 @@ def _run_react(session, history: list[dict], user_input: str) -> list[dict]:
     except Exception as e:
         spinner.stop()
         print(f"\n[error] {e}")
+    finally:
+        listener.stop()
     print()
     print()
     return history
@@ -537,8 +613,10 @@ def _chat_loop(session, history: list[dict]) -> None:
                 print(f"Unknown command: {cmd}")
                 continue
 
+        history_snapshot = list(history)
+        cancel_event = threading.Event()
+        listener = _KeyboardListener(cancel_event)
         spinner = _Spinner()
-        spinner.start()
 
         def _render_result(tool_name: str, result: str) -> None:
             lines = result.strip().splitlines()
@@ -549,18 +627,23 @@ def _chat_loop(session, history: list[dict]) -> None:
                 sys.stdout.write(f"{_GRAY}  ↳ ... ({len(lines) - 1} more lines){_R}\n")
             sys.stdout.flush()
 
+        spinner.start()
+        listener.start()
         try:
             gen = react_loop(
                 user_input,
                 history,
                 session=session,
                 on_history_update=lambda h: save_history(session, h),
+                cancel_event=cancel_event,
             )
             new_history = None
             final_buf: list[str] = []
             while True:
                 try:
                     chunk = next(gen)
+                    if cancel_event.is_set():
+                        break
                     if chunk.startswith(TOOL_PREFIX):
                         spinner.print_line(chunk[len(TOOL_PREFIX):].rstrip("\n"))
                     elif chunk.startswith(THINK_PREFIX):
@@ -587,19 +670,28 @@ def _chat_loop(session, history: list[dict]) -> None:
                         sys.stdout.write(chunk)
                         sys.stdout.flush()
                 except StopIteration as e:
-                    new_history = e.value
+                    if not cancel_event.is_set():
+                        new_history = e.value
                     break
             spinner.stop()
-            if final_buf:
-                print()
-                _console.print(Markdown("".join(final_buf)))
-                last_response.clear()
-                last_response.extend(final_buf)
-            if new_history is not None:
-                history = new_history
+            if cancel_event.is_set():
+                sys.stdout.write(f"\r{' ' * 48}\r^C  Cancelled.\n")
+                sys.stdout.flush()
+                history = history_snapshot
+                save_history(session, history_snapshot)
+            else:
+                if final_buf:
+                    print()
+                    _console.print(Markdown("".join(final_buf)))
+                    last_response.clear()
+                    last_response.extend(final_buf)
+                if new_history is not None:
+                    history = new_history
         except Exception as e:
             spinner.stop()
             print(f"\n[error] {e}")
+        finally:
+            listener.stop()
         print()
         print()
 
