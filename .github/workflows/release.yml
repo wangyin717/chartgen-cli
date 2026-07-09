@@ -19,6 +19,8 @@ jobs:
             artifact: chartgen-darwin-x86_64
           - os: ubuntu-latest
             artifact: chartgen-linux-x86_64
+          - os: windows-latest
+            artifact: chartgen-windows-x86_64.exe
 
     runs-on: ${{ matrix.os }}
 
@@ -38,7 +40,8 @@ jobs:
       - name: Install playwright browsers
         run: playwright install chromium
 
-      - name: Minify source
+      - name: Minify source (Unix)
+        if: runner.os != 'Windows'
         run: |
           pip install python-minifier
           python -m python_minifier \
@@ -47,7 +50,8 @@ jobs:
             --remove-literal-statements \
             chartgen_cli/
 
-      - name: Build binary
+      - name: Build binary (Unix)
+        if: runner.os != 'Windows'
         run: |
           pyinstaller \
             --onefile \
@@ -62,8 +66,31 @@ jobs:
             --collect-all=pyecharts \
             chartgen_cli/main.py
 
-      - name: Rename artifact
+      - name: Build binary (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          pyinstaller `
+            --onefile `
+            --name chartgen `
+            --add-data "chartgen_cli/agent_loop/prompt;chartgen_cli/agent_loop/prompt" `
+            --hidden-import=playwright `
+            --hidden-import=pyecharts `
+            --hidden-import=pandas `
+            --hidden-import=numpy `
+            --hidden-import=matplotlib `
+            --hidden-import=pptx `
+            --collect-all=pyecharts `
+            chartgen_cli/main.py
+
+      - name: Rename artifact (Unix)
+        if: runner.os != 'Windows'
         run: mv dist/chartgen dist/${{ matrix.artifact }}
+
+      - name: Rename artifact (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: mv dist/chartgen.exe dist/${{ matrix.artifact }}
 
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
