@@ -40,16 +40,6 @@ jobs:
       - name: Install playwright browsers
         run: playwright install chromium
 
-      - name: Minify source (Unix)
-        if: runner.os != 'Windows'
-        run: |
-          pip install python-minifier
-          python -m python_minifier \
-            --output /tmp/chartgen_min \
-            --rename-globals \
-            --remove-literal-statements \
-            chartgen_cli/
-
       - name: Build binary (Unix)
         if: runner.os != 'Windows'
         run: |
