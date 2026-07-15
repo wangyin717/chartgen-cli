@@ -17,7 +17,7 @@ jobs:
             artifact: chartgen-darwin-arm64
           - os: macos-13
             artifact: chartgen-darwin-x86_64
-          - os: ubuntu-latest
+          - os: ubuntu-22.04
             artifact: chartgen-linux-x86_64
           - os: windows-latest
             artifact: chartgen-windows-x86_64.exe
