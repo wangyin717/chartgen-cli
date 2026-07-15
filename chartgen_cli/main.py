@@ -21,6 +21,9 @@ try:
         pass
     import atexit
     atexit.register(readline.write_history_file, _HISTORY_FILE)
+    # Disable filename tab-completion: in POSIX locale environments (e.g. Docker),
+    # Chinese IME byte sequences are misread as Tab, triggering directory listings.
+    readline.set_completer(lambda text, state: None)
 
 except ImportError:
     pass
