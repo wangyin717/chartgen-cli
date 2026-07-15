@@ -700,8 +700,9 @@ def _install_playwright() -> None:
     try:
         from playwright._impl._driver import compute_driver_executable, get_driver_env
         import subprocess
-        driver, _ = compute_driver_executable()
-        result = subprocess.run([str(driver), "install", "chromium"], env=get_driver_env())
+        driver_executable = compute_driver_executable()
+        cmd = [str(x) for x in driver_executable] + ["install", "chromium"]
+        result = subprocess.run(cmd, env=get_driver_env())
         sys.exit(result.returncode)
     except Exception as e:
         print(f"playwright install failed: {e}", file=sys.stderr)
