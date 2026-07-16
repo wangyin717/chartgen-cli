@@ -6,6 +6,13 @@ import threading
 import itertools
 import time
 
+# Ensure C.UTF-8 locale so readline uses wcwidth() for CJK wide-character
+# column calculation. Must happen before readline is imported.
+# Without this, deleting a Chinese character leaves a ghost space and
+# backspace can eat the "> " prompt.
+if not os.environ.get('LANG'):
+    os.environ['LANG'] = 'C.UTF-8'
+
 # Force UTF-8 on stdin/stdout/stderr so Chinese input works in POSIX locale
 # environments (Docker containers, CI runners) where the default encoding is ASCII.
 for _stream in (sys.stdin, sys.stdout, sys.stderr):
