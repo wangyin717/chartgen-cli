@@ -25,6 +25,7 @@ uv run pyinstaller \
     --onefile \
     --name chartgen \
     --add-data "chartgen_cli/agent_loop/prompt:chartgen_cli/agent_loop/prompt" \
+    --add-data "chartgen_cli/tools/prompt:chartgen_cli/tools/prompt" \
     --hidden-import=playwright \
     --hidden-import=pyecharts \
     --hidden-import=pandas \

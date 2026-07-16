@@ -60,7 +60,7 @@ info "Installed: $BIN_DIR/$BIN_NAME"
 
 # ── Playwright browser (generate_ppt feature) ─────────────────────────────────
 step "Installing Playwright browser binary (for generate_ppt — may take a few minutes)..."
-"$BIN_DIR/$BIN_NAME" _playwright_install 2>/dev/null \
+"$BIN_DIR/$BIN_NAME" _playwright_install 2>&1 \
     || warn "Playwright browser install failed. Run later: chartgen _playwright_install"
 
 # ── Linux clipboard hint ──────────────────────────────────────────────────────
