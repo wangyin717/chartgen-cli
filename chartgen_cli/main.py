@@ -6,6 +6,15 @@ import threading
 import itertools
 import time
 
+# Force UTF-8 on stdin/stdout/stderr so Chinese input works in POSIX locale
+# environments (Docker containers, CI runners) where the default encoding is ASCII.
+for _stream in (sys.stdin, sys.stdout, sys.stderr):
+    if hasattr(_stream, 'reconfigure'):
+        try:
+            _stream.reconfigure(encoding='utf-8', errors='replace')
+        except Exception:
+            pass
+
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
@@ -24,6 +33,10 @@ try:
     # Disable filename tab-completion: in POSIX locale environments (e.g. Docker),
     # Chinese IME byte sequences are misread as Tab, triggering directory listings.
     readline.set_completer(lambda text, state: None)
+    # Allow 8-bit (UTF-8) pass-through so Chinese input works in POSIX locales.
+    readline.parse_and_bind('set input-meta on')
+    readline.parse_and_bind('set output-meta on')
+    readline.parse_and_bind('set convert-meta off')
 
 except ImportError:
     pass
